@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NoiseAlert App</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #e0f7fa;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    #status {
+      font-size: 26px;
+      font-weight: bold;
+      padding: 20px;
+      width: 80%;
+      text-align: center;
+      border-radius: 20px;
+      transition: 0.3s ease;
+    }
+    .green { background: #b2fab4; color: #064e00; }
+    .yellow { background: #fff59d; color: #5c4a00; }
+    .red { background: #ff5252; color: white; animation: pulse 1s infinite alternate; }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.05); }
+    }
+    #log {
+      max-height: 150px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 10px;
+      padding: 10px;
+      width: 80%;
+      margin-top: 20px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <h1>📢 NoiseAlert</h1>
+  <div id="status" class="green">Waiting...</div>
+  <div id="log"></div>
+  <audio id="shhSound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_47d04f7c30.mp3?filename=shh-6962.mp3"></audio>
+
+  <script>
+    let audioContext, analyser, micStream, dataArray;
+    let isTooLoud = false;
+    const statusEl = document.getElementById("status");
+    const logBox = document.getElementById("log");
+    const shhSound = document.getElementById("shhSound");
+
+    async function startMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(micStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        monitorNoise();
+      } catch (err) {
+        statusEl.textContent = "🎤 Please allow microphone access!";
+      }
+    }
+
+    function getDb() {
+      analyser.getByteTimeDomainData(dataArray);
+      let sumSquares = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const val = (dataArray[i] - 128) / 128;
+        sumSquares += val * val;
+      }
+      return Math.min(Math.max(Math.round(20 * Math.log10(Math.sqrt(sumSquares / dataArray.length)) + 90), 0), 120);
+    }
+
+    function updateUI(db) {
+      if (db < 55) {
+        statusEl.className = "green";
+        statusEl.textContent = Quiet ✅ (${db} dB);
+        isTooLoud = false;
+      } else if (db < 80) {
+        statusEl.className = "yellow";
+        statusEl.textContent = Getting Noisy 🟡 (${db} dB);
+        isTooLoud = false;
+      } else {
+        if (!isTooLoud) {
+          statusEl.className = "red";
+          statusEl.textContent = Too Loud! 🤫 (${db} dB);
+          shhSound.currentTime = 0;
+          shhSound.play();
+          logAlert(db);
+          isTooLoud = true;
+        }
+      }
+    }
+
+    function logAlert(db) {
+      const now = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.textContent =🔴 ${now} → ${db} dB`;
+      logBox.prepend(div);
+    }
+
+    function monitorNoise() {
+      const db = getDb();
+      updateUI(db);
+      requestAnimationFrame(monitorNoise);
+    }
+
+    startMic();
+  </script>
+</body>
+</html>
